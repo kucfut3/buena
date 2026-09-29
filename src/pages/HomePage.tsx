@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Hero } from "@/components/Hero";
 import { NumberList } from "@/components/NumberList";
+import { SpainPrivateNumbers } from "@/components/SpainPrivateNumbers";
 import { WhyChooseUs } from "@/components/WhyChooseUs";
 import { FAQ } from "@/components/FAQ";
 import { SmsModal } from "@/components/SmsModal";
@@ -12,7 +13,6 @@ export function HomePage() {
   const [selectedPhone, setSelectedPhone] = useState<PhoneNumber | null>(null);
 
   const freeNumbers = numbers.filter((n) => n.type === "free");
-  const paidNumbers = numbers.filter((n) => n.type === "paid");
 
   return (
     <>
@@ -23,12 +23,7 @@ export function HomePage() {
         loading={loading}
         onViewSms={setSelectedPhone}
       />
-      <NumberList
-        numbers={paidNumbers}
-        type="paid"
-        loading={loading}
-        onViewSms={setSelectedPhone}
-      />
+      <SpainPrivateNumbers />
       <WhyChooseUs />
       <FAQ />
       <SmsModal phone={selectedPhone} onClose={() => setSelectedPhone(null)} />

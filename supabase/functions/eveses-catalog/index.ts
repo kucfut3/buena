@@ -21,14 +21,14 @@ const pricingCache = new Map<string, CacheEntry>(); // key = country code
 // provider_price is the Eveses cost (in cents). We apply a markup to
 // compute sale_price. The markup is configurable but never changes the
 // $10 provider cost ceiling.
-const SALE_MARKUP_PERCENT = 60; // 60% markup over provider cost
+const SALE_MARKUP_PERCENT = 100; // 100% markup over provider cost
 
 function computeSalePrice(providerPriceCents: number): number {
   return Math.round(providerPriceCents * (1 + SALE_MARKUP_PERCENT / 100));
 }
 
-// ── Duration filter: only 7, 14, 30 days (in minutes) ──────────────────
-const ALLOWED_DURATIONS_MIN = [10080, 20160, 43200]; // 7d, 14d, 30d
+// ── Duration filter: 3, 7, 14, 30 days (in minutes) ──────────────────
+const ALLOWED_DURATIONS_MIN = [4320, 10080, 20160, 43200]; // 3d, 7d, 14d, 30d
 const MAX_PROVIDER_PRICE_CENTS = 1000; // $10.00 in cents
 
 interface DurationOption {
@@ -70,12 +70,11 @@ interface CatalogOffer {
   duration_label: string;
   provider_price_cents: number;
   provider_price_usd: number;
-  sale_price_cents: number;
+  sale_price_cents: number; // in USD cents (provider cost * 2)
   sale_price_usd: number;
+  sale_price_eur_cents: number; // converted from USD to EUR
   sale_price_eur: number;
   count: number;
-  is_voip: boolean;
-  refundable: boolean;
   renewable: boolean;
   delivery_rate: number;
   delivery_samples: number;
@@ -98,10 +97,11 @@ function durationLabel(min: number): string {
   if (min >= 43200) return "30 días";
   if (min >= 20160) return "14 días";
   if (min >= 10080) return "7 días";
+  if (min >= 4320) return "3 días";
   return `${min} min`;
 }
 
-// USD→EUR approx (static; Eveses prices are in USD)
+// USD→EUR conversion rate (Eveses prices are in USD; we convert to EUR for display)
 const USD_TO_EUR = 0.92;
 
 function filterSpainOffers(pricing: PricingData): CatalogOffer[] {
@@ -118,17 +118,19 @@ function filterSpainOffers(pricing: PricingData): CatalogOffer[] {
       if (opt.count <= 0) continue;
       if (opt.price >= MAX_PROVIDER_PRICE_CENTS) continue;
 
+      const saleCentsUsd = computeSalePrice(opt.price);
+      const saleEur = saleCentsUsd * USD_TO_EUR;
+
       offers.push({
         duration_minutes: dur.duration,
         duration_label: durationLabel(dur.duration),
         provider_price_cents: opt.price,
         provider_price_usd: opt.price / 100,
-        sale_price_cents: computeSalePrice(opt.price),
-        sale_price_usd: computeSalePrice(opt.price) / 100,
-        sale_price_eur: (computeSalePrice(opt.price) / 100) * USD_TO_EUR,
+        sale_price_cents: saleCentsUsd,
+        sale_price_usd: saleCentsUsd / 100,
+        sale_price_eur_cents: Math.round(saleEur),
+        sale_price_eur: Math.round(saleEur) / 100,
         count: opt.count,
-        is_voip: opt.is_voip,
-        refundable: opt.refundable,
         renewable: opt.renewable,
         delivery_rate: opt.delivery,
         delivery_samples: opt.delivery_samples,
