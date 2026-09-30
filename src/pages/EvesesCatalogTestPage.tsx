@@ -98,6 +98,45 @@ const COUNTRY_NAMES: Record<string, string> = {
   ge: "Georgia", am: "Armenia", by: "Belarus", lt: "Lithuania", lv: "Latvia",
   ee: "Estonia", sk: "Slovakia", si: "Slovenia", hr: "Croatia", bg: "Bulgaria",
   rs: "Serbia", mk: "North Macedonia", al: "Albania", ba: "Bosnia", me: "Montenegro",
+  // Extended coverage
+  ad: "Andorra", ag: "Antigua & Barbuda", ai: "Anguilla", ao: "Angola",
+  aw: "Aruba", ax: "Åland Islands", ba: "Bosnia", bb: "Barbados",
+  bf: "Burkina Faso", bi: "Burundi", bj: "Benin", bm: "Bermuda",
+  bn: "Brunei", bo: "Bolivia", bs: "Bahamas", bw: "Botswana",
+  bz: "Belize", cd: "DR Congo", cf: "Central African Rep.", cg: "Congo",
+  ci: "Côte d'Ivoire", ck: "Cook Islands", cm: "Cameroon", cn: "China",
+  cr: "Costa Rica", cu: "Cuba", cv: "Cape Verde", cw: "Curaçao",
+  cy: "Cyprus", dj: "Djibouti", dm: "Dominica", do: "Dominican Rep.",
+  ec: "Ecuador", ee: "Estonia", er: "Eritrea", et: "Ethiopia",
+  fj: "Fiji", fo: "Faroe Islands", ga: "Gabon", gd: "Grenada",
+  gf: "French Guiana", gh: "Ghana", gi: "Gibraltar", gl: "Greenland",
+  gm: "Gambia", gn: "Guinea", gp: "Guadeloupe", gq: "Equatorial Guinea",
+  gt: "Guatemala", gw: "Guinea-Bissau", gy: "Guyana", hn: "Honduras",
+  ht: "Haiti", is: "Iceland", jm: "Jamaica", jo: "Jordan",
+  kh: "Cambodia", ki: "Kiribati", km: "Comoros", kn: "St. Kitts & Nevis",
+  kp: "North Korea", kw: "Kuwait", ky: "Cayman Islands", la: "Laos",
+  lb: "Lebanon", lc: "St. Lucia", li: "Liechtenstein", lr: "Liberia",
+  ls: "Lesotho", lu: "Luxembourg", ly: "Libya", mc: "Monaco",
+  md: "Moldova", mg: "Madagascar", mh: "Marshall Islands", ml: "Mali",
+  mm: "Myanmar", mn: "Mongolia", mo: "Macau", mq: "Martinique",
+  mr: "Mauritania", ms: "Montserrat", mt: "Malta", mu: "Mauritius",
+  mv: "Maldives", mw: "Malawi", mz: "Mozambique", na: "Namibia",
+  nc: "New Caledonia", ne: "Niger", nf: "Norfolk Island", ni: "Nicaragua",
+  np: "Nepal", nr: "Nauru", nu: "Niue", om: "Oman",
+  pw: "Palau", pa: "Panama", pg: "Papua New Guinea", py: "Paraguay",
+  pm: "St. Pierre & Miquelon", pn: "Pitcairn", pr: "Puerto Rico",
+  ps: "Palestine", py: "Paraguay", qa: "Qatar", re: "Réunion",
+  rw: "Rwanda", sb: "Solomon Islands", sc: "Seychelles", sd: "Sudan",
+  sh: "St. Helena", sl: "Sierra Leone", sm: "San Marino", sn: "Senegal",
+  so: "Somalia", sr: "Suriname", ss: "South Sudan", st: "São Tomé & Príncipe",
+  sv: "El Salvador", sx: "Sint Maarten", sy: "Syria", sz: "Eswatini",
+  tc: "Turks & Caicos", td: "Chad", tg: "Togo", tj: "Tajikistan",
+  tk: "Tokelau", tl: "Timor-Leste", tm: "Turkmenistan", tn: "Tunisia",
+  to: "Tonga", tt: "Trinidad & Tobago", tv: "Tuvalu", tz: "Tanzania",
+  ug: "Uganda", uy: "Uruguay", va: "Vatican City", vc: "St. Vincent",
+  ve: "Venezuela", vg: "British Virgin Islands", vi: "U.S. Virgin Islands",
+  vu: "Vanuatu", wf: "Wallis & Futuna", ws: "Samoa", ye: "Yemen",
+  zm: "Zambia", zw: "Zimbabwe",
 };
 
 const COUNTRY_FLAGS: Record<string, string> = {
@@ -110,6 +149,34 @@ const COUNTRY_FLAGS: Record<string, string> = {
   pt: "🇵🇹", gr: "🇬🇷", cz: "🇨🇿", hu: "🇭🇺", be: "🇧🇪", at: "🇦🇹",
   ch: "🇨🇭", dk: "🇩🇰", no: "🇳🇴", ie: "🇮🇪", nz: "🇳🇿", sg: "🇸🇬",
   my: "🇲🇾", hk: "🇭🇰", tw: "🇹🇼", sa: "🇸🇦", ae: "🇦🇪", il: "🇮🇱",
+  kz: "🇰🇿", uz: "🇺🇿", az: "🇦🇿", ge: "🇬🇪", am: "🇦🇲", by: "🇧🇾",
+  lt: "🇱🇹", lv: "🇱🇻", ee: "🇪🇪", sk: "🇸🇰", si: "🇸🇮", hr: "🇭🇷",
+  bg: "🇧🇬", rs: "🇷🇸", mk: "🇲🇰", al: "🇦🇱", ba: "🇧🇦", me: "🇲🇪",
+  // Extended
+  ad: "🇦🇩", ag: "🇦🇬", ao: "🇦🇴", aw: "🇦🇼", bb: "🇧🇧", bf: "🇧🇫",
+  bi: "🇧🇮", bj: "🇧🇯", bm: "🇧🇲", bn: "🇧🇳", bo: "🇧🇴", bs: "🇧🇸",
+  bw: "🇧🇼", bz: "🇧🇿", cd: "🇨🇩", cf: "🇨🇫", cg: "🇨🇬", ci: "🇨🇮",
+  ck: "🇨🇰", cm: "🇨🇲", cn: "🇨🇳", cr: "🇨🇷", cu: "🇨🇺", cv: "🇨🇻",
+  cw: "🇨🇼", cy: "🇨🇾", dj: "🇩🇯", dm: "🇩🇲", do: "🇩🇴", ec: "🇪🇨",
+  er: "🇪🇷", et: "🇪🇹", fj: "🇫🇯", fo: "🇫🇴", ga: "🇬🇦", gd: "🇬🇩",
+  gf: "🇬🇫", gh: "🇬🇭", gi: "🇬🇮", gl: "🇬🇱", gm: "🇬🇲", gn: "🇬🇳",
+  gp: "🇬🇵", gq: "🇬🇶", gt: "🇬🇹", gw: "🇬🇼", gy: "🇬🇾", hn: "🇭🇳",
+  ht: "🇭🇹", is: "🇮🇸", jm: "🇯🇲", jo: "🇯🇴", kh: "🇰🇭", ki: "🇰🇮",
+  km: "🇰🇲", kn: "🇰🇳", kp: "🇰🇵", kw: "🇰🇼", ky: "🇰🇾", la: "🇱🇦",
+  lb: "🇱🇧", lc: "🇱🇨", li: "🇱🇮", lr: "🇱🇷", ls: "🇱🇸", lu: "🇱🇺",
+  ly: "🇱🇾", mc: "🇲🇨", md: "🇲🇩", mg: "🇲🇬", mh: "🇲🇭", ml: "🇲🇱",
+  mm: "🇲🇲", mn: "🇲🇳", mo: "🇲🇴", mq: "🇲🇶", mr: "🇲🇷", ms: "🇲🇸",
+  mt: "🇲🇹", mu: "🇲🇺", mv: "🇲🇻", mw: "🇲🇼", mz: "🇲🇿", na: "🇳🇦",
+  nc: "🇳🇨", ne: "🇳🇪", nf: "🇳🇫", ni: "🇳🇮", np: "🇳🇵", nr: "🇳🇷",
+  nu: "🇳🇺", om: "🇴🇲", pw: "🇵🇼", pa: "🇵🇦", pg: "🇵🇬", py: "🇵🇾",
+  pm: "🇵🇲", pn: "🇵🇳", pr: "🇵🇷", ps: "🇵🇸", qa: "🇶🇦", re: "🇷🇪",
+  rw: "🇷🇼", sb: "🇸🇧", sc: "🇸🇨", sd: "🇸🇩", sh: "🇸🇭", sl: "🇸🇱",
+  sm: "🇸🇲", sn: "🇸🇳", so: "🇸🇴", sr: "🇸🇷", ss: "🇸🇸", st: "🇸🇹",
+  sv: "🇸🇻", sx: "🇸🇽", sy: "🇸🇾", sz: "🇸🇿", tc: "🇹🇨", td: "🇹🇩",
+  tg: "🇹🇬", tj: "🇹🇯", tk: "🇹🇰", tl: "🇹🇱", tm: "🇹🇲", tn: "🇹🇳",
+  to: "🇹🇴", tt: "🇹🇹", tv: "🇹🇻", tz: "🇹🇿", ug: "🇺🇬", uy: "🇺🇾",
+  va: "🇻🇦", vc: "🇻🇨", ve: "🇻🇪", vg: "🇻🇬", vi: "🇻🇮", vu: "🇻🇺",
+  wf: "🇼🇫", ws: "🇼🇸", ye: "🇾🇪", zm: "🇿🇲", zw: "🇿🇼",
 };
 
 function getCountryName(code: string): string {
@@ -549,6 +616,17 @@ export function EvesesCatalogTestPage() {
               />
             </div>
             <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
+              <button
+                onClick={() => setSelectedCountries(new Set(availableCountries))}
+                className={`flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-bold transition-all ${
+                  selectedCountries.size === availableCountries.length && availableCountries.length > 0
+                    ? "border-amber-500/60 bg-amber-500/10 text-amber-400"
+                    : "border-zinc-600 bg-zinc-700/40 text-zinc-200 hover:border-amber-500/40"
+                }`}
+              >
+                <Globe2 className="h-3 w-3" />
+                Todos
+              </button>
               {filteredCountries.map((code) => {
                 const active = selectedCountries.has(code);
                 return (
@@ -568,14 +646,22 @@ export function EvesesCatalogTestPage() {
                 <span className="text-xs text-zinc-500">Carga los datos primero</span>
               )}
             </div>
-            {selectedCountries.size > 0 && (
+            <div className="mt-2 flex gap-3">
               <button
-                onClick={() => setSelectedCountries(new Set())}
-                className="mt-2 text-[11px] text-zinc-500 hover:text-white"
+                onClick={() => setSelectedCountries(new Set(availableCountries))}
+                className="text-[11px] font-semibold text-zinc-400 hover:text-amber-400"
               >
-                Limpiar selección
+                Seleccionar todos
               </button>
-            )}
+              {selectedCountries.size > 0 && (
+                <button
+                  onClick={() => setSelectedCountries(new Set())}
+                  className="text-[11px] text-zinc-500 hover:text-white"
+                >
+                  Limpiar selección
+                </button>
+              )}
+            </div>
           </div>
         </div>
 

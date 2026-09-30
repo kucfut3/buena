@@ -337,9 +337,25 @@ Deno.serve(async (req: Request) => {
       const cData = countriesRes.data;
       if (typeof cData === "object" && cData !== null && !Array.isArray(cData)) {
         const obj = cData as Record<string, unknown>;
-        if (Array.isArray(obj.countries)) countryList = obj.countries as string[];
+        if (Array.isArray(obj.countries)) {
+          countryList = (obj.countries as unknown[]).map((c) => {
+            if (typeof c === "string") return c.toLowerCase();
+            if (typeof c === "object" && c !== null) {
+              const o = c as Record<string, unknown>;
+              return String(o.code || o.iso || o.id || "").toLowerCase();
+            }
+            return "";
+          }).filter(Boolean);
+        }
       } else if (Array.isArray(cData)) {
-        countryList = cData as string[];
+        countryList = (cData as unknown[]).map((c) => {
+          if (typeof c === "string") return c.toLowerCase();
+          if (typeof c === "object" && c !== null) {
+            const o = c as Record<string, unknown>;
+            return String(o.code || o.iso || o.id || "").toLowerCase();
+          }
+          return "";
+        }).filter(Boolean);
       }
 
       if (countryList.length === 0) {
@@ -357,7 +373,7 @@ Deno.serve(async (req: Request) => {
       for (const chunk of chunks) {
         const results = await Promise.allSettled(
           chunk.map(async (cc) => {
-            const r = await apiGet(`/api/v1/numbers/pricing?mode=rent&country=${cc}&service=anyother`);
+            const r = await apiGet(`/api/v1/numbers/pricing?mode=rent&country=${encodeURIComponent(cc)}&service=anyother`);
             if (!r.ok) return [];
             const pricing = r.data as PricingData;
             return extractAllOffers(pricing, cc);
