@@ -324,11 +324,12 @@ export function EvesesCatalogTestPage() {
     });
   }, [explorerData, selectedCountries, stockOnly, renewableOnly, selectedDurations, maxPrice, customMaxPrice]);
 
-  // ── Unique countries from explorer data ─────────────────────────────
+  // ── All countries returned by Eveses, including those without offers ─
   const availableCountries = useMemo(() => {
-    if (!explorerData?.offers) return [];
-    const set = new Set(explorerData.offers.map((o) => o.country_code));
-    return Array.from(set).sort();
+    if (!explorerData?.countries) return [];
+    return Array.from(new Set(explorerData.countries)).sort((a, b) =>
+      getCountryName(a).localeCompare(getCountryName(b))
+    );
   }, [explorerData]);
 
   const filteredCountries = useMemo(() => {
