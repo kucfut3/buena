@@ -18,31 +18,25 @@ import {
 } from "lucide-react";
 import { useLang } from "@/LanguageContext";
 
-interface CatalogOffer {
+interface PublicCatalogItem {
+  id: string;
+  country_code: string;
+  country_name: string;
   duration_minutes: number;
   duration_label: string;
-  provider_price_cents: number;
-  provider_price_usd: number;
-  sale_price_cents: number;
-  sale_price_usd: number;
-  sale_price_eur_cents: number;
   sale_price_eur: number;
-  count: number;
+  sale_price_eur_cents: number;
+  available: boolean;
   renewable: boolean;
   delivery_rate: number;
   delivery_samples: number;
 }
 
-interface SpainCatalogResponse {
+interface PublicCatalogResponse {
   success: boolean;
   error?: string;
-  detail?: string;
-  country: string;
-  currency: string;
-  offers: CatalogOffer[];
-  cached_at: number | null;
+  items: PublicCatalogItem[];
   fetched_at: number | null;
-  cache_age_seconds: number | null;
   source: "cache" | "live";
 }
 
@@ -50,13 +44,29 @@ interface ValidateResponse {
   success: boolean;
   valid?: boolean;
   error?: string;
-  offer?: CatalogOffer;
+  offer?: { duration_label: string; sale_price_eur: number };
   currency?: string;
 }
 
 const POLL_INTERVAL_MS = 75 * 1000;
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+const COUNTRY_FLAGS: Record<string, string> = {
+  us: "🇺🇸", gb: "🇬🇧", ca: "🇨🇦", au: "🇦🇺", de: "🇩🇪", fr: "🇫🇷",
+  es: "🇪🇸", it: "🇮🇹", nl: "🇳🇱", ru: "🇷🇺", ua: "🇺🇦", pl: "🇵🇱",
+  se: "🇸🇪", fi: "🇫🇮", ro: "🇷🇴", id: "🇮🇩", ph: "🇵🇭", br: "🇧🇷",
+  mx: "🇲🇽", in: "🇮🇳", jp: "🇯🇵", kr: "🇰🇷", za: "🇿🇦", ar: "🇦🇷",
+  cl: "🇨🇱", co: "🇨🇴", pe: "🇵🇪", th: "🇹🇭", vn: "🇻🇳", tr: "🇹🇷",
+  eg: "🇪🇬", ma: "🇲🇦", ng: "🇳🇬", ke: "🇰🇪", pk: "🇵🇰", bd: "🇧🇩",
+  pt: "🇵🇹", gr: "🇬🇷", cz: "🇨🇿", hu: "🇭🇺", be: "🇧🇪", at: "🇦🇹",
+  ch: "🇨🇭", dk: "🇩🇰", no: "🇳🇴", ie: "🇮🇪", nz: "🇳🇿", sg: "🇸🇬",
+  my: "🇲🇾", hk: "🇭🇰", tw: "🇹🇼", sa: "🇸🇦", ae: "🇦🇪", il: "🇮🇱",
+};
+
+function getFlag(code: string): string {
+  return COUNTRY_FLAGS[code] || "🏳️";
+}
 
 function timeAgoShort(seconds: number): string {
   if (seconds < 60) return `hace ${seconds}s`;
@@ -66,16 +76,15 @@ function timeAgoShort(seconds: number): string {
 
 export function SpainCatalogPage() {
   const { localizedPath } = useLang();
-  const [offers, setOffers] = useState<CatalogOffer[]>([]);
+  const [items, setItems] = useState<PublicCatalogItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
-  const [cacheAge, setCacheAge] = useState<number | null>(null);
   const [source, setSource] = useState<"cache" | "live" | null>(null);
   const [, setTick] = useState(0);
-  const [validatingDuration, setValidatingDuration] = useState<number | null>(null);
-  const [validationResult, setValidationResult] = useState<{ ok: boolean; msg: string; offer?: CatalogOffer } | null>(null);
+  const [validatingId, setValidatingId] = useState<string | null>(null);
+  const [validationResult, setValidationResult] = useState<{ ok: boolean; msg: string } | null>(null);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -85,26 +94,25 @@ export function SpainCatalogPage() {
     setError(null);
 
     try {
-      const url = `${supabaseUrl}/functions/v1/eveses-catalog?action=spain-catalog`;
+      const url = `${supabaseUrl}/functions/v1/eveses-catalog?action=public-catalog`;
       const res = await fetch(url, {
         method: "GET",
         headers: { Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
       });
-      const json = (await res.json()) as SpainCatalogResponse;
+      const json = (await res.json()) as PublicCatalogResponse;
 
       if (!json.success) {
         setError(json.error || "Error al cargar el catálogo.");
-        setOffers([]);
+        setItems([]);
       } else {
-        setOffers(json.offers || []);
+        setItems((json.items || []).filter((i) => i.available));
         setLastUpdated(json.fetched_at ?? Date.now());
-        setCacheAge(json.cache_age_seconds ?? 0);
         setSource(json.source);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setError("Error de conexión: " + msg);
-      setOffers([]);
+      setItems([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -126,12 +134,12 @@ export function SpainCatalogPage() {
     return () => { if (tickRef.current) clearInterval(tickRef.current); };
   }, [lastUpdated]);
 
-  const handleBuy = async (offer: CatalogOffer) => {
-    setValidatingDuration(offer.duration_minutes);
+  const handleBuy = async (item: PublicCatalogItem) => {
+    setValidatingId(item.id);
     setValidationResult(null);
 
     try {
-      const url = `${supabaseUrl}/functions/v1/eveses-catalog?action=validate-offer&duration=${offer.duration_minutes}`;
+      const url = `${supabaseUrl}/functions/v1/eveses-catalog?action=validate-offer&duration=${item.duration_minutes}`;
       const res = await fetch(url, {
         method: "GET",
         headers: { Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
@@ -142,7 +150,6 @@ export function SpainCatalogPage() {
         setValidationResult({
           ok: true,
           msg: `Oferta confirmada: ${json.offer.duration_label} por ${json.offer.sale_price_eur.toFixed(2)} €`,
-          offer: json.offer,
         });
       } else {
         setValidationResult({
@@ -154,19 +161,26 @@ export function SpainCatalogPage() {
     } catch {
       setValidationResult({ ok: false, msg: "Error de conexión. Inténtalo de nuevo." });
     } finally {
-      setValidatingDuration(null);
+      setValidatingId(null);
     }
   };
 
   const secondsSinceUpdate = lastUpdated ? Math.floor((Date.now() - lastUpdated) / 1000) : 0;
 
+  // Group items by country
+  const groupedByCountry = items.reduce<Record<string, PublicCatalogItem[]>>((acc, item) => {
+    const key = item.country_code;
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(item);
+    return acc;
+  }, {});
+
+  const countryKeys = Object.keys(groupedByCountry).sort();
+
   return (
     <div className="min-h-screen w-full max-w-full overflow-hidden pt-24 pb-16">
       <div className="mx-auto max-w-4xl px-4 sm:px-6 lg:px-8">
-        <Link
-          to={localizedPath("/")}
-          className="mb-6 inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-400 transition-colors hover:text-white"
-        >
+        <Link to={localizedPath("/")} className="mb-6 inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-400 transition-colors hover:text-white">
           <ArrowLeft className="h-4 w-4" />
           Volver al Inicio
         </Link>
@@ -175,9 +189,7 @@ export function SpainCatalogPage() {
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border border-emerald-500/20 bg-emerald-500/10">
             <Boxes className="h-8 w-8 text-emerald-400" />
           </div>
-          <h1 className="text-2xl font-bold text-white sm:text-3xl">
-            Números Privados de España
-          </h1>
+          <h1 className="text-2xl font-bold text-white sm:text-3xl">Números Privados</h1>
           <p className="mt-2 text-sm text-zinc-400 max-w-lg mx-auto">
             Números privados en alquiler para recibir SMS de cualquier servicio.
             Catálogo actualizado automáticamente cada 1-2 minutos.
@@ -192,23 +204,13 @@ export function SpainCatalogPage() {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="text-sm font-bold text-white">España</span>
-                <span className="text-base">🇪🇸</span>
+                <span className="text-sm font-bold text-white">{items.length} ofertas</span>
                 <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${source === "live" ? "bg-emerald-500/15 text-emerald-400" : "bg-zinc-700/40 text-zinc-400"}`}>
                   {source === "live" ? "EN VIVO" : "CACHÉ"}
                 </span>
               </div>
               <div className="text-xs text-zinc-500 mt-0.5">
-                {lastUpdated ? (
-                  <>
-                    Actualizado {timeAgoShort(secondsSinceUpdate)}
-                    {cacheAge !== null && cacheAge > 0 && (
-                      <span className="ml-2 text-zinc-600">· caché de {cacheAge}s</span>
-                    )}
-                  </>
-                ) : (
-                  "Cargando..."
-                )}
+                {lastUpdated ? `Actualizado ${timeAgoShort(secondsSinceUpdate)}` : "Cargando..."}
               </div>
             </div>
           </div>
@@ -260,96 +262,112 @@ export function SpainCatalogPage() {
         {loading ? (
           <div className="flex flex-col items-center justify-center py-16">
             <Loader2 className="h-8 w-8 animate-spin text-emerald-400" />
-            <p className="mt-3 text-sm text-zinc-400">Consultando catálogo de España...</p>
+            <p className="mt-3 text-sm text-zinc-400">Consultando catálogo...</p>
           </div>
-        ) : offers.length === 0 && !error ? (
+        ) : items.length === 0 && !error ? (
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 py-16 text-center">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900">
               <Boxes className="h-7 w-7 text-zinc-600" />
             </div>
             <h4 className="mt-4 text-base font-bold text-white">Sin ofertas disponibles</h4>
             <p className="mt-1 text-xs text-zinc-400 max-w-sm mx-auto">
-              No hay números privados de España que cumplan los criterios (renovable, stock disponible, coste del proveedor menor a $10, duraciones de 3/7/14/30 días).
+              No hay números privados disponibles en este momento.
             </p>
             <p className="mt-2 text-xs text-zinc-500">El catálogo se actualiza automáticamente. Vuelve a intentarlo en unos minutos.</p>
           </div>
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {offers.map((offer, i) => {
-              const isValidating = validatingDuration === offer.duration_minutes;
-              const isPopular = offer.duration_minutes === 10080;
+          <div className="space-y-8">
+            {countryKeys.map((countryCode) => {
+              const countryItems = groupedByCountry[countryCode];
+              const countryName = countryItems[0]?.country_name || countryCode;
 
               return (
-                <div
-                  key={`${offer.duration_minutes}-${i}`}
-                  className={`group relative flex flex-col overflow-hidden rounded-2xl border p-5 transition-all duration-300 ${
-                    isPopular
-                      ? "border-emerald-500/40 bg-gradient-to-b from-emerald-500/10 to-zinc-900/30 hover:border-emerald-500/60"
-                      : "border-zinc-800 bg-gradient-to-b from-zinc-900/80 to-zinc-900/30 hover:border-emerald-500/30"
-                  }`}
-                >
-                  {isPopular && (
-                    <div className="absolute right-0 top-0 flex items-center gap-1 rounded-bl-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-zinc-950 shadow-md">
-                      <Sparkles className="h-3 w-3" />
-                      Popular
-                    </div>
-                  )}
-
-                  <div className="flex items-center gap-2">
-                    <Clock className="h-5 w-5 text-emerald-400" />
-                    <h3 className="text-lg font-bold text-white">{offer.duration_label}</h3>
+                <div key={countryCode}>
+                  <div className="mb-3 flex items-center gap-2">
+                    <span className="text-xl">{getFlag(countryCode)}</span>
+                    <h3 className="text-sm font-bold text-zinc-300">{countryName}</h3>
+                    <span className="text-[10px] text-zinc-600 font-mono">{countryCode}</span>
                   </div>
 
-                  <div className="mt-4">
-                    <div className="text-3xl font-black text-white">
-                      {offer.sale_price_eur.toFixed(2)} €
-                    </div>
-                    <div className="mt-1 text-xs text-zinc-500">
-                      ≈ ${offer.sale_price_usd.toFixed(2)} USD
-                    </div>
-                  </div>
+                  <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {countryItems.map((item) => {
+                      const isValidating = validatingId === item.id;
+                      const isPopular = item.duration_minutes === 10080;
 
-                  <div className="mt-4 space-y-2 flex-1">
-                    <div className="flex items-center gap-2 text-xs text-zinc-400">
-                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400">
-                        <CheckCircle2 className="h-3 w-3" />
-                      </span>
-                      Disponible
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-zinc-400">
-                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400">
-                        <RotateCcw className="h-3 w-3" />
-                      </span>
-                      Renovable
-                    </div>
-                    {offer.delivery_samples > 0 && (
-                      <div className="flex items-center gap-2 text-xs text-zinc-400">
-                        <span className="flex h-5 w-5 items-center justify-center rounded-full bg-zinc-800 text-zinc-400">
-                          <TrendingUp className="h-3 w-3" />
-                        </span>
-                        Tasa de entrega: {(offer.delivery_rate * 100).toFixed(0)}%
-                      </div>
-                    )}
-                  </div>
+                      return (
+                        <div
+                          key={item.id}
+                          className={`group relative flex flex-col overflow-hidden rounded-2xl border p-5 transition-all duration-300 ${
+                            isPopular
+                              ? "border-emerald-500/40 bg-gradient-to-b from-emerald-500/10 to-zinc-900/30 hover:border-emerald-500/60"
+                              : "border-zinc-800 bg-gradient-to-b from-zinc-900/80 to-zinc-900/30 hover:border-emerald-500/30"
+                          }`}
+                        >
+                          {isPopular && (
+                            <div className="absolute right-0 top-0 flex items-center gap-1 rounded-bl-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-zinc-950 shadow-md">
+                              <Sparkles className="h-3 w-3" />
+                              Popular
+                            </div>
+                          )}
 
-                  <div className="mt-5 pt-1">
-                    <button
-                      onClick={() => handleBuy(offer)}
-                      disabled={isValidating || offer.count <= 0}
-                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 px-3 py-2.5 text-xs font-bold text-white shadow-md shadow-emerald-500/10 transition-all hover:from-emerald-400 hover:to-teal-500 disabled:opacity-50 active:scale-[0.98]"
-                    >
-                      {isValidating ? (
-                        <>
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          Verificando...
-                        </>
-                      ) : (
-                        <>
-                          <ShoppingCart className="h-3.5 w-3.5" />
-                          Comprar {offer.sale_price_eur.toFixed(2)} €
-                        </>
-                      )}
-                    </button>
+                          <div className="flex items-center gap-2">
+                            <Clock className="h-5 w-5 text-emerald-400" />
+                            <h4 className="text-lg font-bold text-white">{item.duration_label}</h4>
+                          </div>
+
+                          <div className="mt-4">
+                            <div className="text-3xl font-black text-white">
+                              {item.sale_price_eur.toFixed(2)} €
+                            </div>
+                          </div>
+
+                          <div className="mt-4 space-y-2 flex-1">
+                            <div className="flex items-center gap-2 text-xs text-zinc-400">
+                              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400">
+                                <CheckCircle2 className="h-3 w-3" />
+                              </span>
+                              Disponible
+                            </div>
+                            {item.renewable && (
+                              <div className="flex items-center gap-2 text-xs text-zinc-400">
+                                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400">
+                                  <RotateCcw className="h-3 w-3" />
+                                </span>
+                                Renovable
+                              </div>
+                            )}
+                            {item.delivery_samples > 0 && (
+                              <div className="flex items-center gap-2 text-xs text-zinc-400">
+                                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-zinc-800 text-zinc-400">
+                                  <TrendingUp className="h-3 w-3" />
+                                </span>
+                                Tasa de entrega: {(item.delivery_rate * 100).toFixed(0)}%
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="mt-5 pt-1">
+                            <button
+                              onClick={() => handleBuy(item)}
+                              disabled={isValidating || !item.available}
+                              className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 px-3 py-2.5 text-xs font-bold text-white shadow-md shadow-emerald-500/10 transition-all hover:from-emerald-400 hover:to-teal-500 disabled:opacity-50 active:scale-[0.98]"
+                            >
+                              {isValidating ? (
+                                <>
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  Verificando...
+                                </>
+                              ) : (
+                                <>
+                                  <ShoppingCart className="h-3.5 w-3.5" />
+                                  Comprar {item.sale_price_eur.toFixed(2)} €
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               );
@@ -365,17 +383,14 @@ export function SpainCatalogPage() {
           <ul className="space-y-1.5 text-xs text-zinc-400">
             <li>• El catálogo se actualiza automáticamente cada 1-2 minutos desde el servidor.</li>
             <li>• Todos los visitantes comparten la misma caché — no se hacen consultas individuales al proveedor.</li>
-            <li>• Solo se muestran ofertas renovables con stock disponible y coste del proveedor menor a $10.</li>
+            <li>• Solo se muestran ofertas con stock disponible.</li>
             <li>• Al pulsar "Comprar", se verifica en tiempo real que la oferta siga disponible antes de continuar.</li>
             <li>• Si una oferta se agota, desaparece del catálogo automáticamente.</li>
           </ul>
         </div>
 
         <div className="mt-4 text-center">
-          <Link
-            to={localizedPath("/eveses-catalog-test")}
-            className="text-xs text-zinc-600 transition-colors hover:text-zinc-400"
-          >
+          <Link to={localizedPath("/eveses-catalog-test")} className="text-xs text-zinc-600 transition-colors hover:text-zinc-400">
             Página de diagnóstico del catálogo →
           </Link>
         </div>
