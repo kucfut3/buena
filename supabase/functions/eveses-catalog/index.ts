@@ -95,6 +95,7 @@ interface SpainCatalogResponse {
 
 // ── Explorer types ─────────────────────────────────────────────────────
 interface ExplorerOffer {
+  eveses_offer_id: string;
   country_code: string;
   duration_minutes: number;
   duration_label: string;
@@ -108,6 +109,13 @@ interface ExplorerOffer {
   delivery_samples: number;
 }
 
+interface ExplorerDebug {
+  countries_received: number;
+  countries_has_es: boolean;
+  offers_received: number;
+  es_offers_received: number;
+}
+
 interface ExplorerResponse {
   success: boolean;
   error?: string;
@@ -116,6 +124,7 @@ interface ExplorerResponse {
   fetched_at: number | null;
   cache_age_seconds: number | null;
   source: "cache" | "live";
+  debug?: ExplorerDebug;
 }
 
 // ── Public catalog types ───────────────────────────────────────────────
@@ -128,6 +137,10 @@ interface CatalogProductRow {
   provider_price_cents: number;
   markup_percent: number;
   custom_price_eur_cents: number | null;
+  eveses_offer_id: string | null;
+  renewable: boolean;
+  stock: number;
+  available: boolean;
 }
 
 interface PublicCatalogItem {
@@ -198,6 +211,10 @@ function filterSpainOffers(pricing: PricingData): CatalogOffer[] {
 }
 
 // Extract all offers from a pricing response (no filtering — explorer does that client-side)
+function getEvesesOfferId(countryCode: string, duration: DurationEntry, option: DurationOption): string {
+  return `${countryCode}:${duration.duration}:${option.price}:${option.renewable ? "renewable" : "fixed"}:${option.is_voip ? "voip" : "standard"}`;
+}
+
 function extractAllOffers(pricing: PricingData, countryCode: string): ExplorerOffer[] {
   const service = pricing.services?.find((s) => s.name === "anyother");
   if (!service) return [];
@@ -207,6 +224,7 @@ function extractAllOffers(pricing: PricingData, countryCode: string): ExplorerOf
   for (const dur of service.durations) {
     for (const opt of dur.options) {
       offers.push({
+        eveses_offer_id: getEvesesOfferId(countryCode, dur, opt),
         country_code: countryCode,
         duration_minutes: dur.duration,
         duration_label: durationLabel(dur.duration),
@@ -257,11 +275,19 @@ Deno.serve(async (req: Request) => {
       Accept: "application/json",
     };
 
-    async function apiGet(path: string): Promise<{ ok: boolean; status: number; data: unknown; raw: string }> {
+    async function apiGet(path: string, attempt = 0): Promise<{ ok: boolean; status: number; data: unknown; raw: string }> {
       const res = await fetch(`${baseUrl}${path}`, { headers: authHeaders });
       const text = await res.text();
       let parsed: unknown = null;
       try { parsed = JSON.parse(text); } catch { parsed = text; }
+
+      if (res.status === 429 && attempt < 3) {
+        const retryAfter = Number(res.headers.get("retry-after")) || 1;
+        const delayMs = Math.min(4000, Math.max(500, retryAfter * 1000)) * (attempt + 1);
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+        return apiGet(path, attempt + 1);
+      }
+
       return { ok: res.ok, status: res.status, data: parsed, raw: text };
     }
 
@@ -323,6 +349,12 @@ Deno.serve(async (req: Request) => {
         const body: ExplorerResponse = {
           success: true, offers: cachedData.offers, countries: cachedData.countries,
           fetched_at: cached.fetchedAt, cache_age_seconds: Math.floor((now - cached.fetchedAt) / 1000), source: "cache",
+          debug: {
+            countries_received: cachedData.countries.length,
+            countries_has_es: cachedData.countries.some((cc) => cc.toLowerCase() === "es"),
+            offers_received: cachedData.offers.length,
+            es_offers_received: cachedData.offers.filter((offer) => offer.country_code.toLowerCase() === "es").length,
+          },
         };
         return new Response(JSON.stringify(body), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
@@ -339,20 +371,20 @@ Deno.serve(async (req: Request) => {
         const obj = cData as Record<string, unknown>;
         if (Array.isArray(obj.countries)) {
           countryList = (obj.countries as unknown[]).map((c) => {
-            if (typeof c === "string") return c.toLowerCase();
+            if (typeof c === "string") return c;
             if (typeof c === "object" && c !== null) {
               const o = c as Record<string, unknown>;
-              return String(o.code || o.iso || o.id || "").toLowerCase();
+              return String(o.code || o.iso || o.id || "");
             }
             return "";
           }).filter(Boolean);
         }
       } else if (Array.isArray(cData)) {
         countryList = (cData as unknown[]).map((c) => {
-          if (typeof c === "string") return c.toLowerCase();
+          if (typeof c === "string") return c;
           if (typeof c === "object" && c !== null) {
             const o = c as Record<string, unknown>;
-            return String(o.code || o.iso || o.id || "").toLowerCase();
+            return String(o.code || o.iso || o.id || "");
           }
           return "";
         }).filter(Boolean);
@@ -364,7 +396,7 @@ Deno.serve(async (req: Request) => {
 
       // 2. Fetch pricing for each country (with limited concurrency)
       const allOffers: ExplorerOffer[] = [];
-      const CONCURRENCY = 5;
+      const CONCURRENCY = 2;
       const chunks: string[][] = [];
       for (let i = 0; i < countryList.length; i += CONCURRENCY) {
         chunks.push(countryList.slice(i, i + CONCURRENCY));
@@ -384,10 +416,19 @@ Deno.serve(async (req: Request) => {
         }
       }
 
+      const esOffers = allOffers.filter((offer) => offer.country_code.toLowerCase() === "es");
+      const debug: ExplorerDebug = {
+        countries_received: countryList.length,
+        countries_has_es: countryList.some((cc) => cc.toLowerCase() === "es"),
+        offers_received: allOffers.length,
+        es_offers_received: esOffers.length,
+      };
+      console.info("Eveses explorer diagnostics", debug);
+
       const cacheData = { offers: allOffers, countries: countryList };
       pricingCache.set("all", { data: cacheData, fetchedAt: now, httpStatus: 200, ok: true });
 
-      const body: ExplorerResponse = { success: true, offers: allOffers, countries: countryList, fetched_at: now, cache_age_seconds: 0, source: "live" };
+      const body: ExplorerResponse = { success: true, offers: allOffers, countries: countryList, fetched_at: now, cache_age_seconds: 0, source: "live", debug };
       return new Response(JSON.stringify(body), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
@@ -425,13 +466,16 @@ Deno.serve(async (req: Request) => {
       const items: PublicCatalogItem[] = [];
       for (const product of products) {
         const countryOffers = liveStockMap.get(product.country_code) || [];
-        const liveOffer = countryOffers.find(
+        const liveOffer = product.eveses_offer_id
+          ? countryOffers.find((o) => o.eveses_offer_id === product.eveses_offer_id)
+          : undefined;
+        const liveByPrice = countryOffers.find(
           (o) => o.duration_minutes === product.duration_minutes &&
                  o.provider_price_cents === product.provider_price_cents
         );
         // Also try matching just by duration if exact price match fails
         const liveByDuration = countryOffers.find((o) => o.duration_minutes === product.duration_minutes);
-        const live = liveOffer || liveByDuration;
+        const live = liveOffer || liveByPrice || liveByDuration;
 
         // Compute sale price
         let saleEurCents: number;

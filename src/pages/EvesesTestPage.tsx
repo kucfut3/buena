@@ -159,7 +159,7 @@ export function EvesesTestPage() {
                   {result.success ? "Conexión exitosa" : "Error de conexión"}
                 </h3>
                 <p className="mt-0.5 text-sm text-zinc-300">
-                  {result.message || result.error || "Resultado de la prueba"}
+                  {String(result.message || result.error || "Resultado de la prueba")}
                 </p>
               </div>
             </div>
@@ -167,7 +167,7 @@ export function EvesesTestPage() {
             {/* Details grid */}
             <div className="grid gap-3 sm:grid-cols-2">
               {/* HTTP Status */}
-              {result.httpStatus !== undefined && (
+              {Boolean(result.httpStatus !== undefined) && (
                 <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
                   <div className="flex items-center gap-2 text-xs text-zinc-500 uppercase tracking-wider">
                     <Server className="h-3.5 w-3.5" />
@@ -175,12 +175,12 @@ export function EvesesTestPage() {
                   </div>
                   <div
                     className={`mt-1.5 text-2xl font-black ${
-                      result.httpStatus >= 200 && result.httpStatus < 300
+                      (result.httpStatus ?? 0) >= 200 && (result.httpStatus ?? 0) < 300
                         ? "text-emerald-400"
                         : "text-red-400"
                     }`}
                   >
-                    {result.httpStatus}
+                    {result.httpStatus ?? "—"}
                   </div>
                 </div>
               )}
@@ -218,36 +218,36 @@ export function EvesesTestPage() {
               </div>
 
               {/* Wallet balance */}
-              {result.wallet && (
+              {Boolean(result.wallet) && (
                 <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 sm:col-span-2">
                   <div className="flex items-center gap-2 text-xs text-zinc-500 uppercase tracking-wider">
                     <ShieldCheck className="h-3.5 w-3.5" />
                     Wallet de Eveses
                   </div>
                   <div className="mt-2 flex flex-wrap gap-4">
-                    {result.wallet.balance_cents !== null && (
+                    {result.wallet?.balance_cents !== null && result.wallet?.balance_cents !== undefined && (
                       <div>
                         <span className="text-xs text-zinc-500">Balance: </span>
                         <span className="font-mono text-sm font-bold text-white">
                           {result.wallet.balance_cents !== null
-                            ? `$${(result.wallet.balance_cents / 100).toFixed(2)}`
+                            ? `${((result.wallet?.balance_cents ?? 0) / 100).toFixed(2)}`
                             : "—"}
                         </span>
                       </div>
                     )}
-                    {result.wallet.currency && (
+                    {result.wallet?.currency && (
                       <div>
                         <span className="text-xs text-zinc-500">Moneda: </span>
                         <span className="font-mono text-sm font-bold text-white">
-                          {result.wallet.currency}
+                          {result.wallet?.currency}
                         </span>
                       </div>
                     )}
-                    {result.rawKeys && result.rawKeys.length > 0 && (
+                    {Boolean(result.rawKeys && result.rawKeys.length > 0) && (
                       <div>
                         <span className="text-xs text-zinc-500">Campos: </span>
                         <span className="font-mono text-xs text-zinc-300">
-                          {result.rawKeys.join(", ")}
+                          {result.rawKeys?.join(", ")}
                         </span>
                       </div>
                     )}
@@ -257,18 +257,18 @@ export function EvesesTestPage() {
             </div>
 
             {/* Error details */}
-            {!result.success && (result.detail || result.evesesResponse) && (
+            {!result.success && Boolean(result.detail || result.evesesResponse) && (
               <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-4">
                 <div className="flex items-center gap-2 text-xs font-semibold text-red-400 uppercase tracking-wider mb-2">
                   <AlertTriangle className="h-4 w-4" />
                   Detalles del error
                 </div>
-                {result.detail && (
+                {Boolean(result.detail) && (
                   <pre className="text-xs text-zinc-300 font-mono whitespace-pre-wrap break-all mb-2">
-                    {result.detail}
+                    {String(result.detail)}
                   </pre>
                 )}
-                {result.evesesResponse && (
+                {Boolean(result.evesesResponse) && (
                   <>
                     <div className="flex items-center justify-between mt-3 mb-1">
                       <span className="text-xs text-zinc-500">Respuesta de Eveses:</span>

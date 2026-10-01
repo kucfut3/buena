@@ -26,6 +26,7 @@ import { supabase } from "@/supabaseClient";
 
 // ── Types ──────────────────────────────────────────────────────────────
 interface ExplorerOffer {
+  eveses_offer_id: string;
   country_code: string;
   duration_minutes: number;
   duration_label: string;
@@ -39,6 +40,13 @@ interface ExplorerOffer {
   delivery_samples: number;
 }
 
+interface ExplorerDebug {
+  countries_received: number;
+  countries_has_es: boolean;
+  offers_received: number;
+  es_offers_received: number;
+}
+
 interface ExplorerResponse {
   success: boolean;
   error?: string;
@@ -47,6 +55,7 @@ interface ExplorerResponse {
   fetched_at: number | null;
   cache_age_seconds: number | null;
   source: "cache" | "live";
+  debug?: ExplorerDebug;
 }
 
 interface CatalogProduct {
@@ -58,6 +67,11 @@ interface CatalogProduct {
   provider_price_cents: number;
   markup_percent: number;
   custom_price_eur_cents: number | null;
+  eveses_offer_id?: string | null;
+  renewable?: boolean;
+  stock?: number;
+  available?: boolean;
+  updated_at?: string;
 }
 
 interface QueryResult {
@@ -100,14 +114,14 @@ const COUNTRY_NAMES: Record<string, string> = {
   rs: "Serbia", mk: "North Macedonia", al: "Albania", ba: "Bosnia", me: "Montenegro",
   // Extended coverage
   ad: "Andorra", ag: "Antigua & Barbuda", ai: "Anguilla", ao: "Angola",
-  aw: "Aruba", ax: "Åland Islands", ba: "Bosnia", bb: "Barbados",
+  aw: "Aruba", ax: "Åland Islands", bb: "Barbados",
   bf: "Burkina Faso", bi: "Burundi", bj: "Benin", bm: "Bermuda",
   bn: "Brunei", bo: "Bolivia", bs: "Bahamas", bw: "Botswana",
   bz: "Belize", cd: "DR Congo", cf: "Central African Rep.", cg: "Congo",
   ci: "Côte d'Ivoire", ck: "Cook Islands", cm: "Cameroon", cn: "China",
   cr: "Costa Rica", cu: "Cuba", cv: "Cape Verde", cw: "Curaçao",
   cy: "Cyprus", dj: "Djibouti", dm: "Dominica", do: "Dominican Rep.",
-  ec: "Ecuador", ee: "Estonia", er: "Eritrea", et: "Ethiopia",
+  ec: "Ecuador", er: "Eritrea", et: "Ethiopia",
   fj: "Fiji", fo: "Faroe Islands", ga: "Gabon", gd: "Grenada",
   gf: "French Guiana", gh: "Ghana", gi: "Gibraltar", gl: "Greenland",
   gm: "Gambia", gn: "Guinea", gp: "Guadeloupe", gq: "Equatorial Guinea",
@@ -125,7 +139,7 @@ const COUNTRY_NAMES: Record<string, string> = {
   np: "Nepal", nr: "Nauru", nu: "Niue", om: "Oman",
   pw: "Palau", pa: "Panama", pg: "Papua New Guinea", py: "Paraguay",
   pm: "St. Pierre & Miquelon", pn: "Pitcairn", pr: "Puerto Rico",
-  ps: "Palestine", py: "Paraguay", qa: "Qatar", re: "Réunion",
+  ps: "Palestine", qa: "Qatar", re: "Réunion",
   rw: "Rwanda", sb: "Solomon Islands", sc: "Seychelles", sd: "Sudan",
   sh: "St. Helena", sl: "Sierra Leone", sm: "San Marino", sn: "Senegal",
   so: "Somalia", sr: "Suriname", ss: "South Sudan", st: "São Tomé & Príncipe",
@@ -230,6 +244,7 @@ export function EvesesCatalogTestPage() {
   const [catalogProducts, setCatalogProducts] = useState<CatalogProduct[]>([]);
   const [loadingCatalog, setLoadingCatalog] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [catalogActionError, setCatalogActionError] = useState<string | null>(null);
 
   // Edit price modal
   const [editingProduct, setEditingProduct] = useState<CatalogProduct | null>(null);
@@ -246,18 +261,19 @@ export function EvesesCatalogTestPage() {
   const [showRaw, setShowRaw] = useState<Record<string, boolean>>({});
 
   // ── Fetch explorer pricing (all countries) ──────────────────────────
-  const fetchExplorer = useCallback(async () => {
+  const fetchExplorer = useCallback(async (forceRefresh = false) => {
     setLoadingExplorer(true);
     setExplorerError(null);
     try {
-      const url = `${supabaseUrl}/functions/v1/eveses-catalog?action=explorer-pricing`;
+      const url = `${supabaseUrl}/functions/v1/eveses-catalog?action=explorer-pricing${forceRefresh ? "&force=true" : ""}`;
       const res = await fetch(url, {
         method: "GET",
         headers: { Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
       });
+      if (!res.ok) throw new Error(`Eveses explorer request failed (${res.status}).`);
       const json = (await res.json()) as ExplorerResponse;
-      if (!json.success) {
-        setExplorerError(json.error || "Error loading explorer data.");
+      if (!json.success || !Array.isArray(json.offers) || !Array.isArray(json.countries)) {
+        setExplorerError(json.error || "Eveses returned an invalid explorer response.");
       } else {
         setExplorerData(json);
       }
@@ -288,27 +304,38 @@ export function EvesesCatalogTestPage() {
   }, []);
 
   useEffect(() => {
-    fetchExplorer();
+    fetchExplorer(true);
     fetchCatalogProducts();
   }, [fetchExplorer, fetchCatalogProducts]);
 
   // ── Add to catalog ──────────────────────────────────────────────────
   const addToCatalog = async (offer: ExplorerOffer) => {
     const key = `${offer.country_code}-${offer.duration_minutes}`;
+    const evesesOfferId = offer.eveses_offer_id;
     setActionLoading(key);
+    setCatalogActionError(null);
     try {
-      const { error } = await supabase.from("catalog_products").insert({
+      const existing = getCatalogProduct(offer.country_code, offer.duration_minutes);
+      const liveFields = {
         country_code: offer.country_code,
         country_name: getCountryName(offer.country_code),
         duration_minutes: offer.duration_minutes,
         duration_label: offer.duration_label,
         provider_price_cents: offer.provider_price_cents,
-        markup_percent: 100,
-      });
-      if (error) throw error;
+        eveses_offer_id: evesesOfferId,
+        renewable: offer.renewable,
+        stock: offer.count,
+        available: offer.count > 0,
+        updated_at: new Date().toISOString(),
+      };
+
+      const result = existing
+        ? await supabase.from("catalog_products").update(liveFields).eq("id", existing.id)
+        : await supabase.from("catalog_products").insert({ ...liveFields, markup_percent: 100 });
+      if (result.error) throw result.error;
       await fetchCatalogProducts();
-    } catch {
-      // ignore
+    } catch (error) {
+      setCatalogActionError(error instanceof Error ? error.message : "No se pudo guardar la oferta.");
     } finally {
       setActionLoading(null);
     }
@@ -365,13 +392,13 @@ export function EvesesCatalogTestPage() {
   // ── Check if offer is in catalog ─────────────────────────────────────
   const isInCatalog = (countryCode: string, durationMin: number) => {
     return catalogProducts.some(
-      (p) => p.country_code === countryCode && p.duration_minutes === durationMin
+      (p) => p.country_code.toLowerCase() === countryCode.toLowerCase() && p.duration_minutes === durationMin
     );
   };
 
   const getCatalogProduct = (countryCode: string, durationMin: number) => {
     return catalogProducts.find(
-      (p) => p.country_code === countryCode && p.duration_minutes === durationMin
+      (p) => p.country_code.toLowerCase() === countryCode.toLowerCase() && p.duration_minutes === durationMin
     );
   };
 
@@ -382,7 +409,10 @@ export function EvesesCatalogTestPage() {
     const priceCentsLimit = effectiveMaxPrice * 100;
 
     return explorerData.offers.filter((offer) => {
-      if (selectedCountries.size > 0 && !selectedCountries.has(offer.country_code)) return false;
+      if (
+        selectedCountries.size > 0 &&
+        !Array.from(selectedCountries).some((code) => code.toLowerCase() === offer.country_code.toLowerCase())
+      ) return false;
       if (stockOnly && offer.count <= 0) return false;
       if (renewableOnly && !offer.renewable) return false;
       if (selectedDurations.size > 0 && !selectedDurations.has(offer.duration_minutes)) return false;
@@ -409,8 +439,36 @@ export function EvesesCatalogTestPage() {
 
   // ── Summary stats ───────────────────────────────────────────────────
   const uniqueCountryCount = useMemo(() => {
-    return new Set(filteredOffers.map((o) => o.country_code)).size;
+    return new Set(filteredOffers.map((o) => o.country_code.toLowerCase())).size;
   }, [filteredOffers]);
+
+  const spainFilterDiagnostics = useMemo(() => {
+    const spainOffers = (explorerData?.offers || []).filter((offer) => offer.country_code.toLowerCase() === "es");
+    const stockOffers = spainOffers.filter((offer) => !stockOnly || offer.count > 0);
+    const renewableOffers = stockOffers.filter((offer) => !renewableOnly || offer.renewable);
+    const durationOffers = renewableOffers.filter(
+      (offer) => selectedDurations.size === 0 || selectedDurations.has(offer.duration_minutes)
+    );
+    const effectiveMaxPrice = customMaxPrice.trim() !== "" ? parseFloat(customMaxPrice) : maxPrice;
+    const priceOffers = durationOffers.filter((offer) => offer.provider_price_cents < effectiveMaxPrice * 100);
+    return {
+      received: spainOffers.length,
+      afterStock: stockOffers.length,
+      afterRenewable: renewableOffers.length,
+      afterDuration: durationOffers.length,
+      afterPrice: priceOffers.length,
+    };
+  }, [explorerData, stockOnly, renewableOnly, selectedDurations, maxPrice, customMaxPrice]);
+
+  useEffect(() => {
+    if (!explorerData) return;
+    console.info("Eveses catalog diagnostics", {
+      countriesReceived: explorerData.countries.length,
+      countriesHasES: explorerData.countries.some((code) => code.toLowerCase() === "es"),
+      offersReceived: explorerData.offers.length,
+      spain: spainFilterDiagnostics,
+    });
+  }, [explorerData, spainFilterDiagnostics]);
 
   const toggleCountry = (code: string) => {
     setSelectedCountries((prev) => {
@@ -493,10 +551,21 @@ export function EvesesCatalogTestPage() {
         </div>
 
         {/* Error */}
-        {explorerError && (
-          <div className="mb-4 flex items-start gap-3 rounded-2xl border border-red-500/30 bg-red-500/10 p-4">
-            <XCircle className="h-5 w-5 shrink-0 text-red-400 mt-0.5" />
-            <p className="text-sm text-zinc-300">{explorerError}</p>
+        {(explorerError || catalogActionError) && (
+          <div className="mb-4 space-y-2">
+            {explorerError && (
+              <div className="flex items-start gap-3 rounded-2xl border border-red-500/30 bg-red-500/10 p-4">
+                <XCircle className="h-5 w-5 shrink-0 text-red-400 mt-0.5" />
+                <p className="text-sm text-zinc-300">{explorerError}</p>
+              </div>
+            )}
+            {catalogActionError && (
+              <div className="flex items-start gap-3 rounded-2xl border border-red-500/30 bg-red-500/10 p-4">
+                <AlertTriangle className="h-5 w-5 shrink-0 text-red-400" />
+                <p className="text-sm text-zinc-300">{catalogActionError}</p>
+                <button onClick={() => setCatalogActionError(null)} className="ml-auto text-xs text-zinc-500 hover:text-white">Cerrar</button>
+              </div>
+            )}
           </div>
         )}
 
@@ -505,7 +574,7 @@ export function EvesesCatalogTestPage() {
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-bold text-white uppercase tracking-wider">Filtros</h2>
             <button
-              onClick={fetchExplorer}
+              onClick={() => fetchExplorer(true)}
               disabled={loadingExplorer}
               className="flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-800/80 px-3 py-1.5 text-xs font-semibold text-zinc-200 transition-colors hover:border-amber-500/40 hover:text-white disabled:opacity-50"
             >
@@ -964,7 +1033,7 @@ export function EvesesCatalogTestPage() {
               <DiagnosticCard label="Países (mode=rent)" icon={Globe2} query={countriesResult.queries.countries} showRaw={showRaw["countries"] || false} onToggle={() => toggleRaw("countries")} />
             )}
 
-            {countriesResult?.queries?.countries?.data && typeof countriesResult.queries.countries.data === "object" && countriesResult.queries.countries.data !== null && (
+            {Boolean(countriesResult?.queries?.countries?.data) && typeof countriesResult?.queries?.countries?.data === "object" && countriesResult.queries.countries.data !== null && (
               <div className="mb-4">
                 <label className="mb-2 block text-xs font-semibold text-zinc-400 uppercase tracking-wider">Selecciona un país</label>
                 <div className="flex flex-wrap gap-2">
