@@ -14,6 +14,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { useLang } from "@/LanguageContext";
+import { COUNTRY_FLAGS, getCountryFlag } from "@/countryData";
 
 // ── Types matching the public-catalog Edge Function response ───────────
 interface PublicCatalogItem {
@@ -46,25 +47,9 @@ interface ValidateResponse {
   currency?: string;
 }
 
-const POLL_INTERVAL_MS = 75 * 1000;
+const POLL_INTERVAL_MS = 30 * 1000;
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-const COUNTRY_FLAGS: Record<string, string> = {
-  us: "🇺🇸", gb: "🇬🇧", ca: "🇨🇦", au: "🇦🇺", de: "🇩🇪", fr: "🇫🇷",
-  es: "🇪🇸", it: "🇮🇹", nl: "🇳🇱", ru: "🇷🇺", ua: "🇺🇦", pl: "🇵🇱",
-  se: "🇸🇪", fi: "🇫🇮", ro: "🇷🇴", id: "🇮🇩", ph: "🇵🇭", br: "🇧🇷",
-  mx: "🇲🇽", in: "🇮🇳", jp: "🇯🇵", kr: "🇰🇷", za: "🇿🇦", ar: "🇦🇷",
-  cl: "🇨🇱", co: "🇨🇴", pe: "🇵🇪", th: "🇹🇭", vn: "🇻🇳", tr: "🇹🇷",
-  eg: "🇪🇬", ma: "🇲🇦", ng: "🇳🇬", ke: "🇰🇪", pk: "🇵🇰", bd: "🇧🇩",
-  pt: "🇵🇹", gr: "🇬🇷", cz: "🇨🇿", hu: "🇭🇺", be: "🇧🇪", at: "🇦🇹",
-  ch: "🇨🇭", dk: "🇩🇰", no: "🇳🇴", ie: "🇮🇪", nz: "🇳🇿", sg: "🇸🇬",
-  my: "🇲🇾", hk: "🇭🇰", tw: "🇹🇼", sa: "🇸🇦", ae: "🇦🇪", il: "🇮🇱",
-};
-
-function getFlag(code: string): string {
-  return COUNTRY_FLAGS[code] || "🏳️";
-}
 
 function timeAgoShort(seconds: number): string {
   if (seconds < 60) return `hace ${seconds}s`;
@@ -92,7 +77,7 @@ export function SpainPrivateNumbers() {
     setError(null);
 
     try {
-      const url = `${supabaseUrl}/functions/v1/eveses-catalog?action=public-catalog`;
+      const url = `${supabaseUrl}/functions/v1/eveses-catalog?action=public-catalog${isManual ? "&force=true" : ""}`;
       const res = await fetch(url, {
         method: "GET",
         headers: { Authorization: `Bearer ${supabaseKey}`, "Content-Type": "application/json" },
@@ -103,8 +88,9 @@ export function SpainPrivateNumbers() {
         setError(json.error || "Error al cargar el catálogo.");
         setItems([]);
       } else {
-        // Only show available items
-        setItems((json.items || []).filter((i) => i.available));
+        // Show all saved catalog products; unavailable ones keep their card
+        // with a disabled buy button instead of vanishing from the page.
+        setItems(json.items || []);
         setLastUpdated(json.fetched_at ?? Date.now());
         setSource(json.source);
       }
@@ -268,7 +254,7 @@ export function SpainPrivateNumbers() {
                 <div key={countryCode}>
                   {/* Country sub-header */}
                   <div className="mb-3 flex items-center gap-2">
-                    <span className="text-xl">{getFlag(countryCode)}</span>
+                    <span className="text-xl">{getCountryFlag(countryCode)}</span>
                     <h3 className="text-sm font-bold text-zinc-300">{countryName}</h3>
                     <span className="text-[10px] text-zinc-600 font-mono">{countryCode}</span>
                   </div>
@@ -309,11 +295,11 @@ export function SpainPrivateNumbers() {
 
                           {/* Features */}
                           <div className="mt-4 space-y-2 flex-1">
-                            <div className="flex items-center gap-2 text-xs text-zinc-400">
-                              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400">
-                                <CheckCircle2 className="h-3 w-3" />
+                            <div className={`flex items-center gap-2 text-xs ${item.available ? "text-zinc-400" : "text-amber-400"}`}>
+                              <span className={`flex h-5 w-5 items-center justify-center rounded-full ${item.available ? "bg-emerald-500/15 text-emerald-400" : "bg-amber-500/15 text-amber-400"}`}>
+                                {item.available ? <CheckCircle2 className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
                               </span>
-                              Disponible
+                              {item.available ? "Disponible" : "Agotado"}
                             </div>
                             {item.renewable && (
                               <div className="flex items-center gap-2 text-xs text-zinc-400">

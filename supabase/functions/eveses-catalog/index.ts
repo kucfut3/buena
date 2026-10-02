@@ -1,4 +1,5 @@
 // Eveses catalog Edge Function — queries the NATIVE REST API for rental pricing.
+// v3 — short cache (15s), fast explorer (concurrency 5), public-catalog with force + fallback.
 // Uses Bearer token auth (EVSES_API_KEY). No sms-activate gateway.
 // Product: Private Number — Any Service (service=anyother, mode=rent)
 //
@@ -17,7 +18,7 @@ interface CacheEntry {
   ok: boolean;
 }
 
-const CACHE_TTL_MS = 90 * 1000;
+const CACHE_TTL_MS = 15 * 1000; // short TTL: users should not wait ~1 min for updates
 const pricingCache = new Map<string, CacheEntry>(); // key = country code or "all"
 
 const SALE_MARKUP_PERCENT = 100;
@@ -396,7 +397,7 @@ Deno.serve(async (req: Request) => {
 
       // 2. Fetch pricing for each country (with limited concurrency)
       const allOffers: ExplorerOffer[] = [];
-      const CONCURRENCY = 2;
+      const CONCURRENCY = 5; // faster fetch of 170 countries; avoids the ~60s wait
       const chunks: string[][] = [];
       for (let i = 0; i < countryList.length; i += CONCURRENCY) {
         chunks.push(countryList.slice(i, i + CONCURRENCY));
@@ -433,11 +434,14 @@ Deno.serve(async (req: Request) => {
     }
 
     // ── action=public-catalog (catalog_products + live stock) ─────────
+    // Uses cached explorer data when available (15s TTL) and enriches with
+    // the saved catalog_products rows. The force param bypasses the cache so
+    // a manual refresh reflects newly-added products immediately.
     if (action === "public-catalog") {
       const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
       const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 
-      // 1. Fetch catalog_products from Supabase
+      // 1. Fetch catalog_products from Supabase (always fresh — this is our DB)
       const dbRes = await fetch(`${supabaseUrl}/rest/v1/catalog_products?select=*`, {
         headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
       });
@@ -450,15 +454,42 @@ Deno.serve(async (req: Request) => {
         return new Response(JSON.stringify({ success: true, items: [], fetched_at: Date.now(), source: "live" }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
       }
 
-      // 2. Fetch live pricing for each unique country in catalog_products
+      // 2. Fetch live pricing for each unique country in catalog_products.
+      //    Use the shared in-memory cache (15s) so repeated public-catalog
+      //    calls within 15s are fast, but a manual refresh (force=true)
+      //    bypasses it. Fallback: if the live fetch fails (429 etc.), we
+      //    still return the product using its stored stock/available fields
+      //    so it does not vanish from Private Numbers.
       const uniqueCountries = [...new Set(products.map((p) => p.country_code))];
       const liveStockMap = new Map<string, ExplorerOffer[]>();
+      const now = Date.now();
 
-      for (const cc of uniqueCountries) {
-        const r = await apiGet(`/api/v1/numbers/pricing?mode=rent&country=${cc}&service=anyother`);
-        if (r.ok) {
-          const pricing = r.data as PricingData;
-          liveStockMap.set(cc, extractAllOffers(pricing, cc));
+      const CONCURRENCY_PC = 4;
+      const chunksPC: string[][] = [];
+      for (let i = 0; i < uniqueCountries.length; i += CONCURRENCY_PC) {
+        chunksPC.push(uniqueCountries.slice(i, i + CONCURRENCY_PC));
+      }
+
+      for (const chunk of chunksPC) {
+        const results = await Promise.allSettled(
+          chunk.map(async (cc) => {
+            const cachedCc = pricingCache.get(cc);
+            if (!force && cachedCc && now - cachedCc.fetchedAt < CACHE_TTL_MS) {
+              return cachedCc.data as ExplorerOffer[];
+            }
+            const r = await apiGet(`/api/v1/numbers/pricing?mode=rent&country=${encodeURIComponent(cc)}&service=anyother`);
+            if (!r.ok) return null;
+            const pricing = r.data as PricingData;
+            const offers = extractAllOffers(pricing, cc);
+            pricingCache.set(cc, { data: offers, fetchedAt: now, httpStatus: r.status, ok: r.ok });
+            return offers;
+          })
+        );
+        for (let i = 0; i < chunk.length; i++) {
+          const r = results[i];
+          if (r.status === "fulfilled" && r.value) {
+            liveStockMap.set(chunk[i], r.value);
+          }
         }
       }
 
@@ -473,7 +504,6 @@ Deno.serve(async (req: Request) => {
           (o) => o.duration_minutes === product.duration_minutes &&
                  o.provider_price_cents === product.provider_price_cents
         );
-        // Also try matching just by duration if exact price match fails
         const liveByDuration = countryOffers.find((o) => o.duration_minutes === product.duration_minutes);
         const live = liveOffer || liveByPrice || liveByDuration;
 
@@ -486,6 +516,12 @@ Deno.serve(async (req: Request) => {
           saleEurCents = Math.round(saleUsdCents * USD_TO_EUR);
         }
 
+        // If live data is available use it; otherwise fall back to stored fields
+        // so the product still shows (with stored availability) instead of
+        // disappearing when Eveses rate-limits us.
+        const available = live ? live.count > 0 : product.available;
+        const renewable = live ? live.renewable : product.renewable;
+
         items.push({
           id: product.id,
           country_code: product.country_code,
@@ -494,8 +530,8 @@ Deno.serve(async (req: Request) => {
           duration_label: product.duration_label,
           sale_price_eur: saleEurCents / 100,
           sale_price_eur_cents: saleEurCents,
-          available: live ? live.count > 0 : false,
-          renewable: live?.renewable ?? true,
+          available,
+          renewable,
           delivery_rate: live?.delivery_rate ?? 0,
           delivery_samples: live?.delivery_samples ?? 0,
         });
