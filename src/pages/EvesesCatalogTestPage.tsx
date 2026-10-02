@@ -205,12 +205,12 @@ export function EvesesCatalogTestPage() {
 
   // ── Add to catalog ──────────────────────────────────────────────────
   const addToCatalog = async (offer: ExplorerOffer) => {
-    const key = `${offer.country_code}-${offer.duration_minutes}`;
+    const key = offer.eveses_offer_id;
     const evesesOfferId = offer.eveses_offer_id;
     setActionLoading(key);
     setCatalogActionError(null);
     try {
-      const existing = getCatalogProduct(offer.country_code, offer.duration_minutes);
+      const existing = getCatalogProduct(offer.eveses_offer_id);
       const liveFields = {
         country_code: offer.country_code,
         country_name: getCountryName(offer.country_code),
@@ -227,9 +227,13 @@ export function EvesesCatalogTestPage() {
       const result = existing
         ? await supabase.from("catalog_products").update(liveFields).eq("id", existing.id)
         : await supabase.from("catalog_products").insert({ ...liveFields, markup_percent: 100 });
-      if (result.error) throw result.error;
+      if (result.error) {
+        console.error("[addToCatalog] Supabase error:", result.error);
+        throw result.error;
+      }
       await fetchCatalogProducts();
     } catch (error) {
+      console.error("[addToCatalog] caught error:", error);
       setCatalogActionError(error instanceof Error ? error.message : "No se pudo guardar la oferta.");
     } finally {
       setActionLoading(null);
@@ -285,15 +289,15 @@ export function EvesesCatalogTestPage() {
   };
 
   // ── Check if offer is in catalog ─────────────────────────────────────
-  const isInCatalog = (countryCode: string, durationMin: number) => {
+  const isInCatalog = (evesesOfferId: string) => {
     return catalogProducts.some(
-      (p) => p.country_code.toLowerCase() === countryCode.toLowerCase() && p.duration_minutes === durationMin
+      (p) => p.eveses_offer_id === evesesOfferId
     );
   };
 
-  const getCatalogProduct = (countryCode: string, durationMin: number) => {
+  const getCatalogProduct = (evesesOfferId: string) => {
     return catalogProducts.find(
-      (p) => p.country_code.toLowerCase() === countryCode.toLowerCase() && p.duration_minutes === durationMin
+      (p) => p.eveses_offer_id === evesesOfferId
     );
   };
 
@@ -676,10 +680,10 @@ export function EvesesCatalogTestPage() {
               </thead>
               <tbody>
                 {filteredOffers.slice(0, 200).map((offer, i) => {
-                  const key = `${offer.country_code}-${offer.duration_minutes}-${offer.provider_price_cents}-${i}`;
-                  const inCatalog = isInCatalog(offer.country_code, offer.duration_minutes);
-                  const catProduct = getCatalogProduct(offer.country_code, offer.duration_minutes);
-                  const isLoading = actionLoading === `${offer.country_code}-${offer.duration_minutes}`;
+                  const key = offer.eveses_offer_id;
+                  const inCatalog = isInCatalog(offer.eveses_offer_id);
+                  const catProduct = getCatalogProduct(offer.eveses_offer_id);
+                  const isLoading = actionLoading === offer.eveses_offer_id;
 
                   return (
                     <tr key={key} className="border-b border-zinc-800/30 last:border-0 hover:bg-zinc-800/20">
